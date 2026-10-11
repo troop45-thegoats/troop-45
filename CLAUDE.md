@@ -225,7 +225,7 @@ Deliberately skipped for v1, with reasons:
 - [ ] Node and git installed. Git email set to my GitHub noreply address.
 - [ ] Public repo `troop-45` under the `troop45-thegoats` organization, two-factor login on, Pages source set to "GitHub Actions"
 - [x] Folder structure above created, `.gitignore` in place, `site.config.json` with the known values (time zone, town, meeting place) and placeholders for the rest
-- [ ] First commit pushed
+- [x] First commit pushed
 
 ### Phase 1: Content model and build script
 - [x] `package.json` (scripts: `build`, `build:samples`, `test`) with `gray-matter` as the only dependency
