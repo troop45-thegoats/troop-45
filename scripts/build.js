@@ -382,7 +382,7 @@ ${canonical ? `<link rel="canonical" href="${esc(canonical)}">` : '<meta name="r
 <meta property="og:title" content="${esc(page.title)}">
 <meta property="og:description" content="${esc(page.description)}">
 ${canonical ? `<meta property="og:url" content="${esc(canonical)}">` : ''}
-${ogImage ? `<meta property="og:image" content="${esc(ogImage)}">\n<meta name="twitter:card" content="summary_large_image">` : ''}
+${ogImage ? `<meta property="og:image" content="${esc(ogImage)}">\n<meta property="og:image:alt" content="${esc(config.troopName)} schedule, ${esc(config.town)}, ${esc(config.state)}">\n<meta name="twitter:card" content="summary_large_image">` : ''}
 ${site.hasStatic('favicon.svg') ? `<link rel="icon" href="${root}favicon.svg" type="image/svg+xml">` : ''}
 <link rel="stylesheet" href="${root}style.css">
 </head>

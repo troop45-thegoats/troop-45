@@ -1,0 +1,23 @@
+<!doctype html>
+<!-- Source for src/static/og.png, the 1200x630 social preview card.
+     Troop name only: no photos, no emblem. To regenerate, from the repo root:
+     "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless \
+       --hide-scrollbars --window-size=1200,630 \
+       --screenshot=src/static/og.png scripts/og-card.html -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<style>
+  @font-face { font-family: "Big Shoulders Display"; src: url("../src/static/fonts/big-shoulders-display.ttf"); font-weight: 100 900; }
+  @font-face { font-family: "Libre Franklin"; src: url("../src/static/fonts/libre-franklin.ttf"); font-weight: 100 900; }
+  html, body { margin: 0; width: 1200px; height: 630px; background: #0C1410; }
+  body { display: flex; flex-direction: column; justify-content: center; padding: 0 96px; box-sizing: border-box; }
+  h1 { margin: 0; font: 800 220px/1 "Big Shoulders Display", sans-serif; color: #15E7B6; }
+  p { margin: 24px 0 0; font: 500 48px/1.2 "Libre Franklin", sans-serif; color: #F4F6F1; }
+</style>
+</head>
+<body>
+  <h1>Troop 45</h1>
+  <p>Schedule · Winfield, New York</p>
+</body>
+</html>

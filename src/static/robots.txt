@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://troop45-thegoats.github.io/troop-45/sitemap.xml

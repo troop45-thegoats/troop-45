@@ -246,9 +246,9 @@ Deliberately skipped for v1, with reasons:
 **Done when:** `npm run build:samples`, then `python3 -m http.server --directory dist`, shows a site that matches the design at 375px and 1200px with JavaScript turned off.
 
 ### Phase 3: Deploy
-- [ ] `.github/workflows/deploy.yml`: build job then deploy job, triggers on push, manual, and a daily schedule
+- [x] `.github/workflows/deploy.yml`: build job then deploy job, triggers on push, manual, and a daily schedule
 - [ ] Site live at `https://troop45-thegoats.github.io/troop-45/` with HTTPS enforced
-- [ ] Favicon, social preview image, `robots.txt` in place
+- [x] Favicon, social preview image, `robots.txt` in place
 - [ ] TinyURL created and tested
 
 **Done when:** pushing a valid change publishes it within minutes, and pushing an invalid note leaves the live site untouched with a readable error.

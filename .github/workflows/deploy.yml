@@ -1,0 +1,52 @@
+# Builds the site from content/meetings/ and publishes dist/ to GitHub Pages.
+# If a test or a note's validation fails, the build job stops, deploy never
+# runs, and the live site stays exactly as it was.
+name: Build and deploy
+
+on:
+  push:
+    branches: [main]
+  # The "Run workflow" button in the Actions tab.
+  workflow_dispatch:
+  # Daily rebuild so "Upcoming", "Past", and "in N days" move on with the
+  # calendar even when nobody edits anything. Cron is in UTC: 05:10 UTC is
+  # just after midnight in New York in winter, 1:10 AM in summer.
+  schedule:
+    - cron: "10 5 * * *"
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Never run two deploys at once; a newer run replaces a queued one.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+      - uses: actions/configure-pages@v6
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5
