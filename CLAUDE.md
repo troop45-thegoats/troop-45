@@ -173,11 +173,11 @@ Admins are the people added as collaborators on the GitHub repo. There is no sha
 
 ## Address and short link
 
-- The repo is owned by the free GitHub organization `troop45-thegoats`, which I own; I own the TinyURL account personally (decided). The organization keeps my username out of the site address, and I keep my membership in it private. Commits use a neutral author name ("Troop 45 Admin") and my GitHub noreply address, never my personal email. Turn on two-factor login (and require it for organization members). Add the backup admin as an organization member. Write the succession steps in `ADMIN.md`: make the next person an owner of the organization, then repoint the TinyURL. Because the organization stays the same, the Pages address does not change on handoff. The Scoutmaster should hold recovery details for both accounts.
+- The repo is owned by the free GitHub organization `troop45-thegoats`, which I own (decided). The organization keeps my username out of the site address, and I keep my membership in it private. Commits use a neutral author name ("Troop 45 Admin") and my GitHub noreply address, never my personal email. Turn on two-factor login (and require it for organization members). Add the backup admin as an organization member. Write the succession steps in `ADMIN.md`: make the next person an owner of the organization. Because the organization stays the same, the Pages address does not change on handoff. The Scoutmaster should hold recovery details for the GitHub account and organization.
 - Name the repo `troop-45`, so the address is `troop45-thegoats.github.io/troop-45/` and includes the troop name. The site lives in a subpath, so the build must produce correct relative links for every page depth (`events/x.html` needs `../style.css`). Canonical links, the sitemap, and social tags use the absolute `baseUrl` from `site.config.json`.
-- The canonical (indexed) address is the GitHub Pages URL. Search results will show that address, not the TinyURL.
-- The TinyURL is only for flyers, QR codes, and saying aloud. No domain is being bought for now. Before relying on it, check three things: can its destination be edited later (this may need a paid plan), does it expire, and who owns the account. A link that can't be edited breaks if the site ever moves.
-- If the site moves hosts or gets a domain later, update the TinyURL if it is editable.
+- The canonical (indexed) address is the GitHub Pages URL, and it is the only address. Use it on flyers and QR codes.
+- No short link and no purchased domain for v1 (decided: a TinyURL was considered and dropped as unnecessary).
+- If the site ever moves hosts or gets a domain, printed flyers and QR codes with the old address will need replacing.
 
 ## Being found (the site is searchable)
 
@@ -200,7 +200,7 @@ Run these in Phases 3 and 4. Check each one.
 - [ ] Favicon.
 - [ ] `robots.txt` allowing crawling and a `sitemap.xml`, both reachable at the site root.
 - [ ] Canonical link on every page, pointing at the GitHub Pages address.
-- [ ] TinyURL created, tested, and its edit and expiry terms checked.
+- [x] ~~TinyURL created~~ Dropped: no short link for v1.
 - [ ] Alt text on any informative image. Decorative images get empty alt. No photos of scouts.
 - [ ] Images compressed (there should be almost none).
 - [ ] Lighthouse page-speed check passes on phone settings (Chrome DevTools has it built in).
@@ -249,7 +249,7 @@ Deliberately skipped for v1, with reasons:
 - [x] `.github/workflows/deploy.yml`: build job then deploy job, triggers on push, manual, and a daily schedule
 - [ ] Site live at `https://troop45-thegoats.github.io/troop-45/` with HTTPS enforced
 - [x] Favicon, social preview image, `robots.txt` in place
-- [ ] TinyURL created and tested
+- [x] ~~TinyURL created and tested~~ Dropped: no short link for v1.
 
 **Done when:** pushing a valid change publishes it within minutes, and pushing an invalid note leaves the live site untouched with a readable error.
 
@@ -258,7 +258,7 @@ Deliberately skipped for v1, with reasons:
 - [ ] `ADMIN.md`: how to add or change an event on GitHub's website with the copy-paste template, what the errors mean, who has repo access, who the backup admin is, succession steps
 - [ ] A second person has repo access as a collaborator
 - [ ] Decision recorded: direct push or pull-request approval
-- [ ] `HOW-IT-WORKS.md`: a plain-language analysis of the finished site. Cover the data flow from note to published page, what each file does, the build and deploy pipeline, how upcoming and past are decided, what happens when a note is wrong, the failure modes and their limits (daily schedule pausing, TinyURL dependence, one-owner risk), and how to extend it
+- [ ] `HOW-IT-WORKS.md`: a plain-language analysis of the finished site. Cover the data flow from note to published page, what each file does, the build and deploy pipeline, how upcoming and past are decided, what happens when a note is wrong, the failure modes and their limits (daily schedule pausing, one-owner risk), and how to extend it
 
 **Done when:** someone else could follow `ADMIN.md` without me, and `HOW-IT-WORKS.md` explains every moving part.
 
@@ -281,10 +281,10 @@ Logins or an admin panel, attendance, RSVPs, scout names or photos, tasks assign
 - **No Obsidian:** my computer may not handle it. Notes are plain Markdown, edited on GitHub's website or in any text editor. Obsidian could open `content/` later with no changes.
 - **Searchable:** yes. The site is public and meant to be found. The repo is public too, and holds nothing private by design.
 - **Audience:** the general public, not only scouts and parents. The home page must make sense to someone who has never heard of the troop.
-- **Address:** no purchased domain for now. A TinyURL short link points at the GitHub Pages address.
+- **Address:** no purchased domain and no short link for now. The GitHub Pages address is the only address.
 - **Identity:** no emblem. The troop's symbol is a neon-green script "Troop 45" sign. Don't reproduce or redraw it. Use its colors only as set out in Design.
 - **Approval:** none needed from the chartering organization or council. Still don't use the Scouting America emblem or logos.
-- **Ownership:** the `troop45-thegoats` GitHub organization owns the repo, and I own the organization. I own the TinyURL account personally.
+- **Ownership:** the `troop45-thegoats` GitHub organization owns the repo, and I own the organization.
 - **Accessibility reports:** go to the Scoutmaster, in person at a meeting or by email to a dedicated troop Gmail address. The address itself is still needed (see below).
 - **Time zone:** `America/New_York`.
 - **Town and meeting place:** Winfield, New York; the regular meeting place is Mary St, as given. Events can be elsewhere, including sleepaway camps that rotate, so `location` is per event.
