@@ -1,0 +1,11 @@
+{
+  "troopName": "Troop 45",
+  "town": "Winfield",
+  "state": "New York",
+  "meetingPlace": "Mary St",
+  "meetingDay": "[meeting day]",
+  "timeZone": "America/New_York",
+  "baseUrl": "https://[username].github.io/troop-45/",
+  "patrols": ["Patrol A", "Patrol B", "Patrol C"],
+  "allowedContacts": []
+}

@@ -1,0 +1,238 @@
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const {
+  isRealDate, todayIn, daysBetween, parseTasks, findContacts,
+  parseNote, buildSchedule, NoteError,
+} = require('./build.js');
+
+const config = {
+  timeZone: 'America/New_York',
+  patrols: ['Patrol A', 'Patrol B'],
+  allowedContacts: ['troop45@example.org'],
+};
+
+// Builds a note from header lines so each test only spells out what it changes.
+function note(headerLines, body = '') {
+  return `---\n${headerLines.join('\n')}\n---\n${body}`;
+}
+const BASE = ['title: Troop Meeting', 'type: meeting', 'date: 2026-10-13'];
+const FILE = '2026-10-13-troop-meeting.md';
+
+function rejects(fileName, source, pattern) {
+  assert.throws(() => parseNote(fileName, source, config), (e) => e instanceof NoteError && pattern.test(e.message));
+}
+
+function lines(...texts) {
+  return texts.map((text, i) => ({ text, lineNo: i + 1 }));
+}
+
+// ---------- dates ----------
+
+test('isRealDate accepts real dates and rejects impossible ones', () => {
+  assert.equal(isRealDate('2026-10-18'), true);
+  assert.equal(isRealDate('2028-02-29'), true);
+  assert.equal(isRealDate('2026-02-29'), false);
+  assert.equal(isRealDate('2026-02-30'), false);
+  assert.equal(isRealDate('2026-13-01'), false);
+  assert.equal(isRealDate('2026-1-5'), false);
+  assert.equal(isRealDate(undefined), false);
+});
+
+test('todayIn uses the troop time zone, not UTC', () => {
+  // 03:30 UTC on Oct 14 is still 23:30 on Oct 13 in New York.
+  assert.equal(todayIn('America/New_York', new Date('2026-10-14T03:30:00Z')), '2026-10-13');
+  assert.equal(todayIn('America/New_York', new Date('2026-10-14T04:00:00Z')), '2026-10-14');
+  // In January New York is UTC-5, so the day turns at 05:00 UTC.
+  assert.equal(todayIn('America/New_York', new Date('2026-01-10T04:59:00Z')), '2026-01-09');
+  assert.equal(todayIn('America/New_York', new Date('2026-01-10T05:00:00Z')), '2026-01-10');
+});
+
+test('daysBetween counts calendar days across a DST change', () => {
+  assert.equal(daysBetween('2026-10-31', '2026-11-02'), 2);
+  assert.equal(daysBetween('2026-10-13', '2026-10-13'), 0);
+  assert.equal(daysBetween('2026-10-18', '2026-10-17'), -1);
+  assert.equal(daysBetween('2026-12-31', '2027-01-01'), 1);
+});
+
+// ---------- tasks ----------
+
+test('parseTasks reads patrol tags, due dates, and done boxes', () => {
+  const tasks = parseTasks(lines(
+    '- [ ] Return permission slip (due 2026-10-08)',
+    '- [ ] [Patrol A] Plan dinner menu',
+    '- [x] Reserve campsite',
+    '- [X] [Patrol B] Buy food (due 2026-10-16)',
+    '',
+  ), config.patrols);
+  assert.deepEqual(tasks, [
+    { text: 'Return permission slip', patrol: null, due: '2026-10-08', done: false },
+    { text: 'Plan dinner menu', patrol: 'Patrol A', due: null, done: false },
+    { text: 'Reserve campsite', patrol: null, due: null, done: true },
+    { text: 'Buy food', patrol: 'Patrol B', due: '2026-10-16', done: true },
+  ]);
+});
+
+test('parseTasks rejects unknown patrols, bad due dates, and stray lines', () => {
+  const bad = (text, pattern) => assert.throws(() => parseTasks(lines(text), config.patrols), pattern);
+  bad('- [ ] [Patrol Z] Plan menu', /unknown patrol "\[Patrol Z\]"/);
+  bad('- [ ] Pay fee (due 2026-02-30)', /not a real date/);
+  bad('- [ ] Pay fee (due Oct 8)', /not a real date/);
+  bad('- [ ] Pay fee (due 2026-10-08) at the meeting', /at the end of the line/);
+  bad('Bring a flashlight', /not a task/);
+  bad('- [] Missing space in box', /not a task/);
+});
+
+// ---------- one note ----------
+
+test('parseNote reads a full note and splits notes from tasks', () => {
+  const ev = parseNote('2026-10-17-fall-campout.md', note([
+    'title: Fall Campout', 'type: campout', 'date: 2026-10-17', 'end_date: 2026-10-18',
+    'start: "08:00"', 'end: "12:00"', 'location: State Park',
+  ], 'Bring a sleeping bag.\n\n## Tasks\n- [ ] Return slip (due 2026-10-08)\n'), config);
+  assert.equal(ev.slug, '2026-10-17-fall-campout');
+  assert.equal(ev.date, '2026-10-17');
+  assert.equal(ev.endDate, '2026-10-18');
+  assert.equal(ev.start, '08:00');
+  assert.equal(ev.status, 'scheduled');
+  assert.equal(ev.notes, 'Bring a sleeping bag.');
+  assert.equal(ev.tasks.length, 1);
+});
+
+test('the template parses once copied to a properly named file', () => {
+  const source = fs.readFileSync(path.join(__dirname, '../content/templates/meeting.md'), 'utf8');
+  const ev = parseNote('2026-01-06-troop-meeting.md', source, config);
+  assert.equal(ev.tasks.length, 2);
+});
+
+test('every sample note is valid', () => {
+  const dir = path.join(__dirname, '../content/samples');
+  const notes = fs.readdirSync(dir).filter((f) => f.endsWith('.md'))
+    .map((fileName) => ({ fileName, source: fs.readFileSync(path.join(dir, fileName), 'utf8') }));
+  const real = JSON.parse(fs.readFileSync(path.join(__dirname, '../site.config.json'), 'utf8'));
+  assert.ok(notes.length >= 5);
+  assert.deepEqual(buildSchedule(notes, real).errors, []);
+});
+
+// ---------- each validation error ----------
+
+test('missing required fields', () => {
+  rejects(FILE, note(['type: meeting', 'date: 2026-10-13']), /missing "title"/);
+  rejects(FILE, note(['title: X', 'date: 2026-10-13']), /missing "type"/);
+  rejects(FILE, note(['title: X', 'type: meeting']), /missing "date"/);
+  rejects(FILE, 'Just text, no header.', /missing its header/);
+});
+
+test('unknown type, status, or field', () => {
+  rejects(FILE, note(['title: X', 'type: party', 'date: 2026-10-13']), /type "party" is not allowed/);
+  rejects(FILE, note([...BASE, 'status: held']), /status "held" is not allowed/);
+  rejects(FILE, note([...BASE, 'loaction: Mary St']), /unknown field "loaction"/);
+});
+
+test('impossible dates are caught even though YAML would roll them over', () => {
+  rejects('2026-02-30-x.md', note(['title: X', 'type: meeting', 'date: 2026-02-30']), /date "2026-02-30" is not a real date/);
+  rejects(FILE, note([...BASE, 'end_date: 2026-10-32']), /end_date "2026-10-32" is not a real date/);
+});
+
+test('end_date before date', () => {
+  rejects(FILE, note([...BASE, 'end_date: 2026-10-12']), /end_date 2026-10-12 is before date 2026-10-13/);
+});
+
+test('unquoted or malformed times', () => {
+  rejects(FILE, note([...BASE, 'start: 19:00']), /start must be a quoted 24-hour time/);
+  rejects(FILE, note([...BASE, 'end: "7:30pm"']), /end must be a quoted 24-hour time/);
+  rejects(FILE, note([...BASE, 'start: "24:00"']), /start must be a quoted/);
+});
+
+test('file name must match the date and the naming pattern', () => {
+  rejects('2026-10-14-troop-meeting.md', note(BASE), /starts with 2026-10-14 but the date field is 2026-10-13/);
+  rejects('Troop Meeting.md', note(BASE), /must look like YYYY-MM-DD-short-name\.md/);
+});
+
+test('task errors name the line in the file', () => {
+  rejects(FILE, note(BASE, 'Notes.\n\n## Tasks\n- [ ] [Patrol Q] Thing\n'), /line 9: unknown patrol/);
+});
+
+test('privacy guard blocks emails and phone numbers unless allowed', () => {
+  rejects(FILE, note(BASE, 'Questions? Email someone@gmail.com'), /contact info \(someone@gmail\.com\)/);
+  rejects(FILE, note(BASE, 'Call 555-123-4567'), /contact info/);
+  rejects(FILE, note(BASE, 'Call (555) 123-4567'), /contact info/);
+  rejects(FILE, note(BASE, 'Call 555.123.4567'), /contact info/);
+  assert.doesNotThrow(() => parseNote(FILE, note(BASE, 'Email troop45@example.org'), config));
+  // Dates and times must not look like phone numbers.
+  assert.deepEqual(findContacts('(due 2026-10-08) at 19:00, 2026-10-13', []), []);
+});
+
+test('buildSchedule reports every broken note with its file name', () => {
+  const result = buildSchedule([
+    { fileName: FILE, source: note(BASE) },
+    { fileName: '2026-10-14-bad.md', source: note(['title: X', 'type: meeting', 'date: 2026-10-14', 'start: 19:00']) },
+  ], config, new Date('2026-10-01T12:00:00Z'));
+  assert.equal(result.errors.length, 1);
+  assert.match(result.errors[0], /^2026-10-14-bad\.md: start must be a quoted/);
+});
+
+// ---------- upcoming versus past ----------
+
+function scheduleAt(isoInstant, notes) {
+  return buildSchedule(notes.map(([fileName, header, body]) => ({ fileName, source: note(header, body) })), config, new Date(isoInstant));
+}
+
+test('a one-day event stays upcoming until midnight New York time', () => {
+  const notes = [[FILE, BASE]];
+  // 23:59 on Oct 13 in New York (03:59 UTC on the 14th): still upcoming.
+  assert.equal(scheduleAt('2026-10-14T03:59:00Z', notes).upcoming.length, 1);
+  // 00:00 on Oct 14 in New York: now past and held.
+  const after = scheduleAt('2026-10-14T04:00:00Z', notes);
+  assert.equal(after.upcoming.length, 0);
+  assert.equal(after.past[0].outcome, 'held');
+});
+
+test('a multi-day event stays upcoming through its last day', () => {
+  const notes = [['2026-10-17-campout.md', ['title: Campout', 'type: campout', 'date: 2026-10-17', 'end_date: 2026-10-18']]];
+  const during = scheduleAt('2026-10-18T20:00:00Z', notes);
+  assert.equal(during.upcoming.length, 1);
+  assert.equal(during.upcoming[0].daysUntil, -1);
+  assert.equal(scheduleAt('2026-10-19T04:00:00Z', notes).past.length, 1);
+});
+
+test('past cancelled events are marked cancelled, not held', () => {
+  const s = scheduleAt('2026-11-01T12:00:00Z', [[FILE, [...BASE, 'status: cancelled']]]);
+  assert.equal(s.past[0].outcome, 'cancelled');
+});
+
+test('daysUntil counts from today in New York', () => {
+  // 22:00 Oct 12 in New York is already Oct 13 in UTC; the event is still 1 day away.
+  const s = scheduleAt('2026-10-13T02:00:00Z', [[FILE, BASE]]);
+  assert.equal(s.today, '2026-10-12');
+  assert.equal(s.upcoming[0].daysUntil, 1);
+});
+
+test('upcoming is soonest first, past is newest first', () => {
+  const s = scheduleAt('2026-10-15T12:00:00Z', [
+    ['2026-10-20-b.md', ['title: B', 'type: meeting', 'date: 2026-10-20']],
+    ['2026-10-16-a.md', ['title: A', 'type: meeting', 'date: 2026-10-16']],
+    ['2026-10-01-old.md', ['title: Old', 'type: meeting', 'date: 2026-10-01']],
+    ['2026-10-08-newer.md', ['title: Newer', 'type: meeting', 'date: 2026-10-08']],
+  ]);
+  assert.deepEqual(s.upcoming.map((e) => e.title), ['A', 'B']);
+  assert.deepEqual(s.past.map((e) => e.title), ['Newer', 'Old']);
+});
+
+// ---------- to do list ----------
+
+test('to do list: open tasks from upcoming, live events, by due date, undated last', () => {
+  const s = scheduleAt('2026-10-10T12:00:00Z', [
+    ['2026-10-20-b.md', ['title: B', 'type: meeting', 'date: 2026-10-20'],
+      '## Tasks\n- [ ] Undated B\n- [ ] Due late (due 2026-10-19)\n- [x] Done already (due 2026-10-11)\n'],
+    ['2026-10-15-a.md', ['title: A', 'type: meeting', 'date: 2026-10-15'],
+      '## Tasks\n- [ ] Undated A\n- [ ] Due early (due 2026-10-12)\n'],
+    ['2026-10-16-off.md', ['title: Off', 'type: meeting', 'date: 2026-10-16', 'status: cancelled'],
+      '## Tasks\n- [ ] Moot task (due 2026-10-11)\n'],
+    ['2026-10-01-old.md', ['title: Old', 'type: meeting', 'date: 2026-10-01'],
+      '## Tasks\n- [ ] Never done (due 2026-09-30)\n'],
+  ]);
+  assert.deepEqual(s.todo.map((t) => t.text), ['Due early', 'Due late', 'Undated A', 'Undated B']);
+  assert.equal(s.todo[0].eventSlug, '2026-10-15-a');
+});
