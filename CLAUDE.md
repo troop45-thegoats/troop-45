@@ -247,7 +247,7 @@ Deliberately skipped for v1, with reasons:
 
 ### Phase 3: Deploy
 - [x] `.github/workflows/deploy.yml`: build job then deploy job, triggers on push, manual, and a daily schedule
-- [ ] Site live at `https://troop45-thegoats.github.io/troop-45/` with HTTPS enforced
+- [x] Site live at `https://troop45-thegoats.github.io/troop-45/` with HTTPS enforced
 - [x] Favicon, social preview image, `robots.txt` in place
 - [x] ~~TinyURL created and tested~~ Dropped: no short link for v1.
 
