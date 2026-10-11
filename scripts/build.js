@@ -1,5 +1,6 @@
-// Turns the Markdown notes in content/ into validated event data.
-// Phase 1 stops at data; Phase 2 adds the HTML pages in dist/.
+// Turns the Markdown notes in content/ into validated event data, then into
+// plain HTML pages in dist/. One file on purpose: the whole site is readable
+// top to bottom, from note to page.
 
 const fs = require('node:fs');
 const path = require('node:path');
@@ -270,6 +271,386 @@ function buildSchedule(notes, config, now = new Date()) {
   return { today, errors, upcoming, past, todo: buildTodo(upcoming) };
 }
 
+// ---------- HTML helpers ----------
+
+// Every bit of note text passes through here before it touches HTML, so a
+// stray "<" in a note can't break a page or inject markup.
+function esc(value) {
+  return String(value)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+const TYPE_LABELS = {
+  meeting: 'Meeting', campout: 'Campout', camp: 'Camp', plc: 'PLC',
+  'court-of-honor': 'Court of Honor', service: 'Service', other: 'Event',
+};
+
+function typePill(type) {
+  // PLC means nothing to the public, so the abbreviation carries its meaning.
+  const label = type === 'plc'
+    ? '<abbr title="Patrol Leaders\' Council">PLC</abbr>'
+    : esc(TYPE_LABELS[type]);
+  return `<span class="pill">${label}</span>`;
+}
+
+// Formats a date string by pinning it to UTC on both sides, so the calendar
+// day printed is always the one written in the note.
+function fmtDate(s, opts) {
+  const [y, m, d] = s.split('-').map(Number);
+  return new Intl.DateTimeFormat('en-US', { timeZone: 'UTC', ...opts }).format(new Date(Date.UTC(y, m - 1, d)));
+}
+const longDate = (s) => fmtDate(s, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+const shortDate = (s) => fmtDate(s, { weekday: 'short', month: 'short', day: 'numeric' });
+const monthHeading = (s) => fmtDate(s, { month: 'long', year: 'numeric' });
+
+function time12(hhmm) {
+  const [h, m] = hhmm.split(':').map(Number);
+  return `${h % 12 || 12}:${String(m).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}`;
+}
+
+function timeRange(start, end) {
+  if (!start) return '';
+  if (!end) return time12(start);
+  const [a, b] = [time12(start), time12(end)];
+  // "7:00 to 8:30 PM" reads better than repeating PM.
+  if (a.slice(-2) === b.slice(-2)) return `${a.slice(0, -3)} to ${b}`;
+  return `${a} to ${b}`;
+}
+
+function whenText(ev, fmt = longDate) {
+  if (!ev.endDate || ev.endDate === ev.date) {
+    const times = timeRange(ev.start, ev.end);
+    return times ? `${fmt(ev.date)}, ${times}` : fmt(ev.date);
+  }
+  const from = ev.start ? `${fmt(ev.date)}, ${time12(ev.start)}` : fmt(ev.date);
+  const to = ev.end ? `${fmt(ev.endDate)}, ${time12(ev.end)}` : fmt(ev.endDate);
+  return `${from} to ${to}`;
+}
+
+function relativeDay(ev) {
+  if (ev.daysUntil < 0) return 'Happening now';
+  if (ev.daysUntil === 0) return ev.endDate ? 'Starts today' : 'Today';
+  if (ev.daysUntil === 1) return 'Tomorrow';
+  return `In ${ev.daysUntil} days`;
+}
+
+// Notes are plain text. Blank lines make paragraphs, "- " lines make a list,
+// and a "## " line makes a heading. Everything else is shown as typed.
+function renderNotes(text) {
+  if (!text) return '';
+  return text.split(/\n\s*\n/).map((block) => {
+    const lines = block.split('\n').map((l) => l.trim()).filter(Boolean);
+    if (lines.every((l) => l.startsWith('- '))) {
+      return `<ul>${lines.map((l) => `<li>${esc(l.slice(2))}</li>`).join('')}</ul>`;
+    }
+    if (lines.length === 1 && /^#{1,6}\s/.test(lines[0])) {
+      return `<h2>${esc(lines[0].replace(/^#+\s*/, ''))}</h2>`;
+    }
+    return `<p>${lines.map(esc).join('<br>\n')}</p>`;
+  }).join('\n');
+}
+
+function firstSentence(text, max = 140) {
+  const plain = (text || '').replace(/^#+\s*/gm, '').replace(/^- /gm, '').replace(/\s+/g, ' ').trim();
+  const sentence = (plain.match(/^.*?[.!?](\s|$)/) || [plain])[0].trim();
+  return sentence.length > max ? `${sentence.slice(0, max - 3).trim()}...` : sentence;
+}
+
+// ---------- page templates ----------
+
+function layout(site, page) {
+  const { config } = site;
+  const root = page.root;
+  const placeName = `${config.troopName} ${config.town}, NY`;
+  const canonical = page.path === undefined ? null : config.baseUrl + page.path;
+  const navLink = (href, label, key) =>
+    `<li><a href="${href}"${page.nav === key ? ' aria-current="page"' : ''}>${label}</a></li>`;
+  // Only point at icons and preview images that exist, so no tag is a broken link.
+  const ogImage = site.hasStatic('og.png') ? config.baseUrl + 'og.png' : null;
+
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${esc(page.title)} | ${esc(placeName)}</title>
+<meta name="description" content="${esc(page.description)}">
+${canonical ? `<link rel="canonical" href="${esc(canonical)}">` : '<meta name="robots" content="noindex">'}
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="${esc(config.troopName)}">
+<meta property="og:title" content="${esc(page.title)}">
+<meta property="og:description" content="${esc(page.description)}">
+${canonical ? `<meta property="og:url" content="${esc(canonical)}">` : ''}
+${ogImage ? `<meta property="og:image" content="${esc(ogImage)}">\n<meta name="twitter:card" content="summary_large_image">` : ''}
+${site.hasStatic('favicon.svg') ? `<link rel="icon" href="${root}favicon.svg" type="image/svg+xml">` : ''}
+<link rel="stylesheet" href="${root}style.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="site-header">
+  <div class="wrap header-inner">
+    <a class="wordmark" href="${root || './'}">${esc(config.troopName)}</a>
+    <nav aria-label="Schedule">
+      <ul>
+        ${navLink(root || './', 'Upcoming', 'upcoming')}
+        ${navLink(`${root}past.html`, 'Past', 'past')}
+      </ul>
+    </nav>
+  </div>
+</header>
+<main id="main" class="wrap">
+${page.body}
+</main>
+<footer class="site-footer">
+  <div class="wrap">
+    <p><a href="${root}about.html">About this site: privacy, accessibility, and schedule changes</a></p>
+    <p>${esc(config.troopName)}, ${esc(config.town)}, ${esc(config.state)}. Last updated ${esc(longDate(site.today))}.</p>
+  </div>
+</footer>
+</body>
+</html>
+`;
+}
+
+function eventRow(ev, root, extra = '') {
+  const multi = ev.endDate && ev.endDate !== ev.date;
+  const meta = [
+    multi ? `to ${shortDate(ev.endDate)}` : '',
+    multi ? '' : timeRange(ev.start, ev.end),
+    ev.location ? esc(ev.location) : '',
+  ].filter(Boolean).join(' · ');
+  const cancelled = ev.status === 'cancelled';
+  const title = cancelled ? `<s>${esc(ev.title)}</s>` : esc(ev.title);
+  return `<li>
+  <a class="event-row" href="${root}events/${esc(ev.slug)}.html">
+    <span class="date-block" aria-hidden="true"><span class="dow">${fmtDate(ev.date, { weekday: 'short' })}</span><span class="dom">${fmtDate(ev.date, { day: 'numeric' })}</span></span>
+    <span class="row-main">
+      <span class="visually-hidden">${esc(shortDate(ev.date))}: </span>
+      <span class="row-title">${title}</span>
+      <span class="row-meta">${typePill(ev.type)}${cancelled ? ' <span class="pill pill-status">Cancelled</span>' : ''}${extra}${meta ? ` <span>${meta}</span>` : ''}</span>
+    </span>
+  </a>
+</li>`;
+}
+
+function groupByMonth(events, root, rowExtra, level = 3) {
+  const groups = [];
+  for (const ev of events) {
+    const label = monthHeading(ev.date);
+    if (!groups.length || groups[groups.length - 1].label !== label) groups.push({ label, events: [] });
+    groups[groups.length - 1].events.push(ev);
+  }
+  return groups.map((g) => `<h${level} class="month">${esc(g.label)}</h${level}>
+<ul class="event-list">
+${g.events.map((ev) => eventRow(ev, root, rowExtra ? rowExtra(ev) : '')).join('\n')}
+</ul>`).join('\n');
+}
+
+function patrolChip(task) {
+  return `<span class="chip">${esc(task.patrol || 'Everyone')}</span>`;
+}
+
+function dueText(task, today) {
+  if (!task.due) return '';
+  const word = task.due < today ? 'Was due' : 'Due';
+  return `<span class="due">${word} ${esc(shortDate(task.due))}</span>`;
+}
+
+function todoList(todo, root, today) {
+  if (!todo.length) return '<p class="empty">Nothing to do right now.</p>';
+  return `<ul class="todo">
+${todo.map((t) => `<li>
+  <p class="task-text">${esc(t.text)}</p>
+  <p class="task-meta">${patrolChip(t)} ${dueText(t, today)} <span class="task-for">for <a href="${root}events/${esc(t.eventSlug)}.html">${esc(t.eventTitle)}</a></span></p>
+</li>`).join('\n')}
+</ul>`;
+}
+
+function homePage(site) {
+  const { schedule, config } = site;
+  const root = '';
+  const next = schedule.upcoming.find((e) => e.status !== 'cancelled');
+  const rest = schedule.upcoming.filter((e) => e !== next);
+  const hasDay = config.meetingDay && !config.meetingDay.startsWith('[');
+  const meets = `${config.troopName} is a Scout troop in ${config.town}, ${config.state}. We meet${hasDay ? ` on ${esc(config.meetingDay)}` : ''} at ${esc(config.meetingPlace)}.`;
+
+  const nextCard = next ? `<div class="next-card">
+  <h3 class="next-title"><a href="events/${esc(next.slug)}.html">${esc(next.title)}</a></h3>
+  <p class="next-type">${typePill(next.type)} <span class="next-when-rel">${relativeDay(next)}</span></p>
+  <p>${esc(whenText(next))}</p>
+  ${next.location ? `<p>${esc(next.location)}</p>` : ''}
+</div>` : '<p class="empty">Nothing scheduled yet.</p>';
+
+  const body = `<section class="intro">
+  <h1>Troop schedule</h1>
+  <p>${meets} Here is what's coming up.</p>
+</section>
+<div class="home-grid">
+<section class="area-next" aria-labelledby="next-h">
+  <h2 id="next-h">Next up</h2>
+  ${nextCard}
+</section>
+<aside class="area-todo" aria-labelledby="todo-h">
+  <h2 id="todo-h">To do</h2>
+  ${todoList(schedule.todo, root, schedule.today)}
+</aside>
+<section class="area-coming" aria-labelledby="coming-h">
+  <h2 id="coming-h">Coming up</h2>
+  ${rest.length ? groupByMonth(rest, root) : `<p class="empty">${next ? 'Nothing else scheduled yet.' : 'Nothing scheduled yet.'}</p>`}
+</section>
+<section class="area-access" aria-labelledby="access-h">
+  <h2 id="access-h">Accessibility</h2>
+  <p>We want this schedule to work for everyone, including people who use a screen reader, a keyboard, or zoomed-in text. If anything here is hard to use, please tell us, and read our <a href="about.html#accessibility">full accessibility statement</a>.</p>
+</section>
+</div>`;
+
+  return layout(site, {
+    root, path: '', nav: 'upcoming', body,
+    title: 'Schedule',
+    description: `Upcoming meetings, campouts, and to do list for Scout ${config.troopName} in ${config.town}, ${config.state}. Regular meetings at ${config.meetingPlace}.`,
+  });
+}
+
+function pastPage(site) {
+  const { schedule } = site;
+  const root = '';
+  const body = `<h1>Past events</h1>
+<p>A record of past meetings and trips, newest first.</p>
+${schedule.past.length
+    // Month headings are h2 here because there is no section heading above them.
+    ? groupByMonth(schedule.past, root, (ev) => (ev.outcome === 'held' ? ' <span class="pill pill-status">Held</span>' : ''), 2)
+    : '<p class="empty">No past events yet.</p>'}`;
+  return layout(site, {
+    root, path: 'past.html', nav: 'past', body,
+    title: 'Past events',
+    description: `Past meetings, campouts, and service projects of Scout ${site.config.troopName} in ${site.config.town}, ${site.config.state}.`,
+  });
+}
+
+function eventPage(site, ev) {
+  const root = '../';
+  const today = site.schedule.today;
+  const statusText = ev.status === 'cancelled' ? 'Cancelled' : (ev.upcoming ? relativeDay(ev) : 'Held');
+  const tasks = ev.tasks.length ? `<section aria-labelledby="todo-h">
+  <h2 id="todo-h">To do</h2>
+  <ul class="todo">
+  ${ev.tasks.map((t) => `<li${t.done ? ' class="done"' : ''}>
+    <p class="task-text">${t.done ? '<span class="pill pill-status">Done</span> ' : ''}${esc(t.text)}</p>
+    <p class="task-meta">${patrolChip(t)} ${t.done ? '' : dueText(t, today)}</p>
+  </li>`).join('\n  ')}
+  </ul>
+</section>` : '';
+
+  const body = `<p class="back"><a href="${root}${ev.upcoming ? '' : 'past.html'}"><span aria-hidden="true">&larr;</span> ${ev.upcoming ? 'All upcoming events' : 'All past events'}</a></p>
+<h1${ev.status === 'cancelled' ? ' class="cancelled"' : ''}>${esc(ev.title)}</h1>
+<p class="event-status">${typePill(ev.type)} <span class="pill pill-status">${statusText}</span></p>
+<dl class="facts">
+  <div><dt>When</dt><dd>${esc(whenText(ev))}</dd></div>
+  ${ev.location ? `<div><dt>Where</dt><dd>${esc(ev.location)}</dd></div>` : ''}
+</dl>
+<div class="notes">
+${renderNotes(ev.notes)}
+</div>
+${tasks}`;
+
+  const what = TYPE_LABELS[ev.type].toLowerCase();
+  const where = ev.location ? ` at ${ev.location}` : '';
+  const lead = ev.status === 'cancelled' ? 'Cancelled: ' : '';
+  return layout(site, {
+    root, path: `events/${ev.slug}.html`, nav: null, body,
+    title: `${ev.title}, ${shortDate(ev.date)}, ${ev.date.slice(0, 4)}`,
+    description: `${lead}${site.config.troopName} ${what} on ${longDate(ev.date)}${where}. ${firstSentence(ev.notes)}`.trim(),
+  });
+}
+
+function aboutPage(site) {
+  const { config } = site;
+  const email = config.accessibilityEmail
+    ? `<a href="mailto:${esc(config.accessibilityEmail)}">${esc(config.accessibilityEmail)}</a>`
+    : '[troop email address, waiting for Scoutmaster approval]';
+  const reply = config.accessibilityReplyTime ? esc(config.accessibilityReplyTime) : '[reply timeframe]';
+  const body = `<h1>About this site</h1>
+<p>This is the public schedule for ${esc(config.troopName)} in ${esc(config.town)}, ${esc(config.state)}: meetings, campouts, and what to do before each one.</p>
+
+<h2 id="privacy">Privacy</h2>
+<p>This site sets no cookies, runs no analytics, and has no forms or accounts. Everything on it, including the fonts, is served from this site, so your visit is not shared with other companies. The site is hosted by GitHub, which keeps basic server logs as any web host does.</p>
+<p>We never publish the names, photos, or contact details of any scout. Tasks are given to everyone or to a patrol, never to a person.</p>
+
+<h2 id="accessibility">Accessibility</h2>
+<p>We want everyone to be able to use this schedule, including people who use a screen reader, a keyboard instead of a mouse, or large text. We aim to meet the Web Content Accessibility Guidelines (WCAG) 2.2 at level AA.</p>
+<ul>
+  <li>Every page works without JavaScript.</li>
+  <li>Every page can be used with a keyboard, and the focused item is always outlined.</li>
+  <li>Text and background colors meet contrast guidelines, and meaning is never shown by color alone.</li>
+  <li>Pages still work when text is enlarged to 200 percent.</li>
+</ul>
+<p>If something is hard to use, tell the Scoutmaster in person at any meeting, or email ${email}. We will reply ${reply}.</p>
+
+<h2 id="schedule-changes">Schedule changes</h2>
+<p>Plans can change because of weather or other reasons. When they do, the event's page is updated, and a called-off event is marked Cancelled. The site also refreshes itself every day. If you are unsure whether an event is on, ask the Scoutmaster at a meeting.</p>`;
+  return layout(site, {
+    root: '', path: 'about.html', nav: null, body,
+    title: 'About, privacy, and accessibility',
+    description: `How the ${config.troopName} ${config.town} schedule site handles privacy, accessibility, and schedule changes.`,
+  });
+}
+
+function notFoundPage(site) {
+  // GitHub Pages serves this file for a missing address at any depth, so its
+  // links must start from the site's own path instead of being relative.
+  const root = new URL(site.config.baseUrl).pathname;
+  const body = `<h1>Page not found</h1>
+<p>That page doesn't exist. The event may have been renamed or moved to another date.</p>
+<p><a href="${root}">See the upcoming schedule</a> or <a href="${root}past.html">past events</a>.</p>`;
+  return layout(site, {
+    root, nav: null, body,
+    title: 'Page not found',
+    description: `Page not found on the ${site.config.troopName} schedule site.`,
+  });
+}
+
+function sitemap(site) {
+  const paths = ['', 'past.html', 'about.html',
+    ...[...site.schedule.upcoming, ...site.schedule.past].map((e) => `events/${e.slug}.html`)];
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+${paths.map((p) => `  <url><loc>${esc(site.config.baseUrl + p)}</loc></url>`).join('\n')}
+</urlset>
+`;
+}
+
+// Starts from an empty dist/ every time, so a deleted note never leaves an
+// orphaned page behind.
+function writeSite(schedule, config, outDir, staticDir) {
+  fs.rmSync(outDir, { recursive: true, force: true });
+  fs.mkdirSync(path.join(outDir, 'events'), { recursive: true });
+  fs.cpSync(staticDir, outDir, { recursive: true });
+
+  const site = {
+    schedule, config, today: schedule.today,
+    hasStatic: (name) => fs.existsSync(path.join(staticDir, name)),
+  };
+  const write = (rel, html) => fs.writeFileSync(path.join(outDir, rel), html);
+  write('index.html', homePage(site));
+  write('past.html', pastPage(site));
+  write('about.html', aboutPage(site));
+  write('404.html', notFoundPage(site));
+  write('sitemap.xml', sitemap(site));
+  for (const ev of [...schedule.upcoming, ...schedule.past]) write(`events/${ev.slug}.html`, eventPage(site, ev));
+}
+
+// Rule 2: no adult contact details unless the Scoutmaster approved them,
+// which is recorded by listing them in allowedContacts.
+function checkConfig(config) {
+  const errors = [];
+  const allowed = (config.allowedContacts || []).map((a) => a.toLowerCase());
+  if (config.accessibilityEmail && !allowed.includes(config.accessibilityEmail.toLowerCase())) {
+    errors.push('site.config.json: accessibilityEmail must also be listed in allowedContacts once the Scoutmaster approves it.');
+  }
+  return errors;
+}
+
 function readNotes(dir) {
   if (!fs.existsSync(dir)) return [];
   return fs.readdirSync(dir)
@@ -283,13 +664,15 @@ function main() {
   const dirName = useSamples ? 'content/samples' : 'content/meetings';
   const config = JSON.parse(fs.readFileSync(path.join(ROOT, 'site.config.json'), 'utf8'));
   const schedule = buildSchedule(readNotes(path.join(ROOT, dirName)), config);
+  const errors = [...checkConfig(config), ...schedule.errors];
 
-  if (schedule.errors.length) {
-    console.error(`Build stopped. Nothing was published. Fix ${schedule.errors.length === 1 ? 'this' : 'these'} in ${dirName}/:\n`);
-    for (const e of schedule.errors) console.error(`  ${e}`);
+  if (errors.length) {
+    console.error(`Build stopped. Nothing was published. Fix ${errors.length === 1 ? 'this' : 'these'} (notes are in ${dirName}/):\n`);
+    for (const e of errors) console.error(`  ${e}`);
     process.exit(1);
   }
-  console.log(`Read ${dirName}/ for ${schedule.today}: ${schedule.upcoming.length} upcoming, ${schedule.past.length} past, ${schedule.todo.length} open tasks.`);
+  writeSite(schedule, config, path.join(ROOT, 'dist'), path.join(ROOT, 'src/static'));
+  console.log(`Built dist/ from ${dirName}/ for ${schedule.today}: ${schedule.upcoming.length} upcoming, ${schedule.past.length} past, ${schedule.todo.length} open tasks.`);
 }
 
 if (require.main === module) main();
@@ -297,4 +680,5 @@ if (require.main === module) main();
 module.exports = {
   isRealDate, isTime, todayIn, daysBetween, rawValue, parseTasks, findContacts,
   parseNote, classify, buildTodo, buildSchedule, NoteError,
+  esc, time12, timeRange, whenText, relativeDay, renderNotes, writeSite, checkConfig,
 };

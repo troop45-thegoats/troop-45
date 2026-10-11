@@ -1,0 +1,248 @@
+/* Troop 45 schedule. Phone first (375px), then wider screens at the bottom. */
+
+@font-face {
+  font-family: "Big Shoulders Display";
+  src: url("fonts/big-shoulders-display.ttf") format("truetype");
+  font-weight: 100 900;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Libre Franklin";
+  src: url("fonts/libre-franklin.ttf") format("truetype");
+  font-weight: 100 900;
+  font-display: swap;
+}
+
+:root {
+  /* Colors from the troop's neon sign. Neon is only ever used on near-black:
+     on a light surface it fails contrast (about 1.5 to 1). */
+  --near-black: #0C1410;
+  --neon: #15E7B6;
+  --deep-green: #087558;
+  --ground: #F4F6F1;
+  --surface: #FFFFFF;
+  --pale-green: #E3EBE1;
+  --line: #D9E0D5;
+  --muted: #566A5E;
+
+  /* The only spacing values allowed on this site. */
+  --s1: 4px;
+  --s2: 8px;
+  --s3: 12px;
+  --s4: 16px;
+  --s5: 24px;
+  --s6: 32px;
+  --s7: 48px;
+
+  --display: "Big Shoulders Display", "Arial Narrow", sans-serif;
+  --body: "Libre Franklin", Arial, sans-serif;
+  --tap: 44px;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  background: var(--ground);
+  color: var(--near-black);
+  font-family: var(--body);
+  font-size: 1rem;
+  line-height: 1.5;
+}
+
+h1, h2, h3 {
+  font-family: var(--display);
+  font-weight: 800;
+  line-height: 1.1;
+  margin: 0 0 var(--s3);
+}
+h1 { font-size: 2.5rem; }
+h2 { font-size: 1.75rem; margin-top: var(--s6); }
+h3 { font-size: 1.375rem; }
+
+p, ul, dl { margin: 0 0 var(--s4); }
+
+a { color: var(--deep-green); text-decoration-thickness: 2px; text-underline-offset: 3px; }
+a:hover { color: var(--near-black); text-decoration-thickness: 3px; }
+
+/* Visible focus everywhere. The outline flips to neon on dark surfaces. */
+:focus-visible { outline: 3px solid var(--deep-green); outline-offset: 2px; }
+.wordmark:focus-visible, .next-card :focus-visible { outline-color: var(--neon); }
+
+.wrap { max-width: 1120px; margin: 0 auto; padding: 0 var(--s4); }
+
+.visually-hidden {
+  position: absolute; width: 1px; height: 1px; overflow: hidden;
+  clip: rect(0 0 0 0); white-space: nowrap;
+}
+
+.skip {
+  position: absolute; left: var(--s2); top: -100px;
+  background: var(--surface); color: var(--near-black);
+  padding: var(--s3) var(--s4); z-index: 10;
+}
+.skip:focus { top: var(--s2); }
+
+/* ---------- header and tabs ---------- */
+
+.site-header { background: var(--near-black); }
+
+.header-inner { display: flex; flex-direction: column; padding: 0; }
+
+.wordmark {
+  display: flex; align-items: center; min-height: 56px;
+  padding: 0 var(--s4);
+  font-family: var(--display); font-weight: 800; font-size: 1.75rem;
+  color: var(--neon); text-decoration: none;
+}
+.wordmark:hover { color: var(--neon); text-decoration: underline; }
+
+/* On phones the tabs sit on the light ground below the dark bar. */
+.site-header nav { background: var(--ground); border-bottom: 1px solid var(--line); }
+.site-header nav ul { display: flex; list-style: none; margin: 0; padding: 0 var(--s4); gap: var(--s5); }
+.site-header nav a {
+  display: flex; align-items: center; min-height: var(--tap);
+  font-weight: 600; color: var(--near-black); text-decoration: none;
+  border-bottom: 3px solid transparent;
+}
+.site-header nav a:hover { border-bottom-color: var(--line); }
+.site-header nav a[aria-current="page"] { border-bottom-color: var(--deep-green); }
+
+/* ---------- shared pieces ---------- */
+
+main { padding-top: var(--s6); padding-bottom: var(--s7); }
+
+.intro p { color: var(--muted); max-width: 60ch; }
+
+.empty { color: var(--muted); }
+
+/* Type and status are always words, never just a color. */
+.pill {
+  display: inline-block;
+  padding: 0 var(--s2);
+  border: 1px solid var(--near-black);
+  border-radius: 999px;
+  font-size: 0.8125rem; font-weight: 600; line-height: 1.6;
+  color: var(--near-black); background: var(--surface);
+}
+.pill abbr { text-decoration: none; }
+.pill-status { background: var(--near-black); color: var(--surface); }
+
+.chip {
+  display: inline-block;
+  padding: 0 var(--s2);
+  border-radius: 4px;
+  background: var(--pale-green);
+  font-size: 0.8125rem; font-weight: 600; line-height: 1.6;
+}
+
+.due { color: var(--deep-green); font-weight: 600; }
+
+/* ---------- next up card ---------- */
+
+.next-card {
+  background: var(--near-black);
+  color: var(--ground);
+  border-radius: 8px;
+  padding: var(--s5) var(--s4);
+}
+.next-card p { margin-bottom: var(--s2); }
+.next-card p:last-child { margin-bottom: 0; }
+.next-title { font-size: 2rem; margin-bottom: var(--s2); }
+.next-title a {
+  color: var(--ground);
+  display: inline-block; min-height: var(--tap); padding-top: var(--s1);
+}
+.next-title a:hover { color: var(--neon); }
+.next-type .pill { border-color: var(--ground); }
+.next-when-rel { color: var(--neon); font-weight: 600; margin-left: var(--s2); }
+
+/* ---------- to do ---------- */
+
+.todo { list-style: none; padding: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; }
+.todo li { padding: var(--s3) var(--s4); border-top: 1px solid var(--line); }
+.todo li:first-child { border-top: 0; }
+.task-text { margin: 0 0 var(--s1); font-weight: 600; }
+.task-meta { margin: 0; font-size: 0.9375rem; display: flex; flex-wrap: wrap; align-items: center; gap: var(--s1) var(--s2); }
+.task-for { color: var(--muted); }
+.task-for a { display: inline-block; padding: var(--s3) 0; margin: calc(-1 * var(--s3)) 0; }
+.todo li.done .task-text { font-weight: 400; color: var(--muted); }
+
+/* ---------- event lists ---------- */
+
+.month { font-family: var(--display); font-weight: 800; line-height: 1.1; font-size: 1.125rem; color: var(--muted); margin: var(--s5) 0 var(--s2); text-transform: uppercase; letter-spacing: 0.04em; }
+.event-list { list-style: none; padding: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; }
+.event-list li + li { border-top: 1px solid var(--line); }
+
+.event-row {
+  display: flex; gap: var(--s4); align-items: flex-start;
+  min-height: var(--tap);
+  padding: var(--s3) var(--s4);
+  color: var(--near-black); text-decoration: none;
+}
+.event-row:hover .row-title { text-decoration: underline; text-decoration-thickness: 2px; }
+
+.date-block {
+  flex: 0 0 48px; text-align: center;
+  font-family: var(--display); font-weight: 800; line-height: 1;
+}
+.dow { display: block; font-size: 0.875rem; text-transform: uppercase; color: var(--muted); }
+.dom { display: block; font-size: 1.75rem; }
+
+.row-main { display: flex; flex-direction: column; gap: var(--s1); }
+.row-title { font-weight: 700; color: var(--deep-green); text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px; }
+.row-meta { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s1) var(--s2); font-size: 0.9375rem; }
+
+/* ---------- event page ---------- */
+
+.back a { display: inline-flex; align-items: center; gap: var(--s2); min-height: var(--tap); }
+h1.cancelled { text-decoration: line-through; }
+.event-status { display: flex; flex-wrap: wrap; gap: var(--s2); }
+
+.facts { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: var(--s3) var(--s4); }
+.facts div { padding: var(--s2) 0; }
+.facts div + div { border-top: 1px solid var(--line); }
+.facts dt { font-family: var(--display); font-weight: 800; font-size: 1.125rem; }
+.facts dd { margin: 0; }
+
+.notes { max-width: 65ch; }
+
+/* ---------- footer ---------- */
+
+.site-footer { border-top: 1px solid var(--line); padding: var(--s5) 0; font-size: 0.9375rem; color: var(--muted); }
+.site-footer a { display: inline-block; padding: var(--s3) 0; }
+
+/* ---------- wider screens ---------- */
+
+@media (min-width: 900px) {
+  h1 { font-size: 3rem; }
+
+  /* The tabs move up into the dark bar and get the neon underline. */
+  .header-inner { flex-direction: row; align-items: center; justify-content: space-between; padding: 0 var(--s4); }
+  .wordmark { padding: 0; min-height: 64px; font-size: 2rem; }
+  .site-header nav { background: transparent; border: 0; }
+  .site-header nav ul { padding: 0; gap: var(--s6); }
+  .site-header nav a { color: var(--ground); min-height: 64px; }
+  .site-header nav a:hover { border-bottom-color: var(--muted); }
+  .site-header nav a[aria-current="page"] { border-bottom-color: var(--neon); }
+  .site-header nav a:focus-visible { outline-color: var(--neon); }
+
+  main { padding-top: var(--s7); }
+
+  /* To do becomes a sidebar beside the schedule. */
+  .home-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+    grid-template-areas: "next todo" "coming todo" "access todo";
+    grid-template-rows: auto auto 1fr;
+    column-gap: var(--s7);
+  }
+  .area-next { grid-area: next; }
+  .area-coming { grid-area: coming; }
+  .area-access { grid-area: access; }
+  .area-todo { grid-area: todo; }
+  .next-card { padding: var(--s6); }
+  .next-title { font-size: 2.5rem; }
+}

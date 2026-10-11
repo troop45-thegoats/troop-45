@@ -237,11 +237,11 @@ Deliberately skipped for v1, with reasons:
 **Done when:** `npm test` passes and a broken note produces one clear error message that names the file and the problem.
 
 ### Phase 2: Pages and styling
-- [ ] The build writes `index.html`, `past.html`, one page per event under `events/`, `about.html`, `404.html`, and `sitemap.xml` into `dist/`, using template functions in `build.js`
-- [ ] `src/static/style.css` implements the Design section, phone first, with the spacing scale and self-hosted fonts
-- [ ] Meta tags, canonical links, skip link, and focus styles on every page
-- [ ] Empty states for no upcoming events and no past events
-- [ ] Relative links correct at every page depth
+- [x] The build writes `index.html`, `past.html`, one page per event under `events/`, `about.html`, `404.html`, and `sitemap.xml` into `dist/`, using template functions in `build.js`
+- [x] `src/static/style.css` implements the Design section, phone first, with the spacing scale and self-hosted fonts
+- [x] Meta tags, canonical links, skip link, and focus styles on every page
+- [x] Empty states for no upcoming events and no past events
+- [x] Relative links correct at every page depth
 
 **Done when:** `npm run build:samples`, then `python3 -m http.server --directory dist`, shows a site that matches the design at 375px and 1200px with JavaScript turned off.
 

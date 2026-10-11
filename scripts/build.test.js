@@ -2,9 +2,11 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const os = require('node:os');
 const {
   isRealDate, todayIn, daysBetween, parseTasks, findContacts,
   parseNote, buildSchedule, NoteError,
+  esc, timeRange, whenText, renderNotes, writeSite, checkConfig,
 } = require('./build.js');
 
 const config = {
@@ -235,4 +237,105 @@ test('to do list: open tasks from upcoming, live events, by due date, undated la
   ]);
   assert.deepEqual(s.todo.map((t) => t.text), ['Due early', 'Due late', 'Undated A', 'Undated B']);
   assert.equal(s.todo[0].eventSlug, '2026-10-15-a');
+});
+
+// ---------- pages ----------
+
+test('esc neutralizes HTML in note text', () => {
+  assert.equal(esc('<script>"x" & \'y\'</script>'), '&lt;script&gt;&quot;x&quot; &amp; &#39;y&#39;&lt;/script&gt;');
+  assert.equal(renderNotes('Bring <b>snacks</b>'), '<p>Bring &lt;b&gt;snacks&lt;/b&gt;</p>');
+});
+
+test('renderNotes makes paragraphs, lists, and headings', () => {
+  assert.equal(renderNotes('One\ntwo\n\n- a\n- b\n\n## Packing'),
+    '<p>One<br>\ntwo</p>\n<ul><li>a</li><li>b</li></ul>\n<h2>Packing</h2>');
+});
+
+test('times read naturally', () => {
+  assert.equal(timeRange('19:00', '20:30'), '7:00 to 8:30 PM');
+  assert.equal(timeRange('09:00', '12:00'), '9:00 AM to 12:00 PM');
+  assert.equal(timeRange('00:30', null), '12:30 AM');
+  assert.equal(whenText({ date: '2026-10-17', endDate: '2026-10-18', start: '08:00', end: '12:00' }),
+    'Saturday, October 17, 2026, 8:00 AM to Sunday, October 18, 2026, 12:00 PM');
+  assert.equal(whenText({ date: '2026-10-13', endDate: null, start: null, end: null }), 'Tuesday, October 13, 2026');
+});
+
+test('an accessibility email must be approved in allowedContacts', () => {
+  assert.equal(checkConfig({ accessibilityEmail: 'a@example.org', allowedContacts: [] }).length, 1);
+  assert.equal(checkConfig({ accessibilityEmail: 'a@example.org', allowedContacts: ['a@example.org'] }).length, 0);
+  assert.equal(checkConfig({ accessibilityEmail: '', allowedContacts: [] }).length, 0);
+});
+
+// Builds the sample site into a temporary folder, the same way npm run build:samples does.
+function buildSampleSite() {
+  const root = path.join(__dirname, '..');
+  const dir = path.join(root, 'content/samples');
+  const notes = fs.readdirSync(dir).filter((f) => f.endsWith('.md'))
+    .map((fileName) => ({ fileName, source: fs.readFileSync(path.join(dir, fileName), 'utf8') }));
+  const real = JSON.parse(fs.readFileSync(path.join(root, 'site.config.json'), 'utf8'));
+  const out = fs.mkdtempSync(path.join(os.tmpdir(), 'troop45-'));
+  const schedule = buildSchedule(notes, real, new Date('2026-10-11T12:00:00Z'));
+  writeSite(schedule, real, out, path.join(root, 'src/static'));
+  return { out, schedule };
+}
+
+function allHtml(dir, base = dir) {
+  return fs.readdirSync(dir, { withFileTypes: true }).flatMap((d) => {
+    const p = path.join(dir, d.name);
+    if (d.isDirectory()) return allHtml(p, base);
+    return d.name.endsWith('.html') ? [path.relative(base, p)] : [];
+  });
+}
+
+test('the build writes every page, and every relative link resolves', () => {
+  const { out, schedule } = buildSampleSite();
+  for (const f of ['index.html', 'past.html', 'about.html', '404.html', 'sitemap.xml', 'style.css']) {
+    assert.ok(fs.existsSync(path.join(out, f)), `missing ${f}`);
+  }
+  const pages = allHtml(out);
+  assert.equal(pages.filter((p) => p.startsWith('events')).length, schedule.upcoming.length + schedule.past.length);
+
+  for (const page of pages) {
+    if (page === '404.html') continue; // uses absolute paths on purpose
+    const html = fs.readFileSync(path.join(out, page), 'utf8');
+    const links = [...html.matchAll(/(?:href|src)="([^"]+)"/g)].map((m) => m[1])
+      .filter((l) => !/^(https?:|mailto:|#)/.test(l));
+    for (const link of links) {
+      let target = path.join(out, path.dirname(page), link.split('#')[0]);
+      if (link.endsWith('/') || link === './' || link === '../') target = path.join(target, 'index.html');
+      assert.ok(fs.existsSync(target), `${page} links to ${link}, which does not exist`);
+    }
+  }
+});
+
+test('every page has a unique title and description, a canonical link, and a skip link', () => {
+  const { out } = buildSampleSite();
+  const titles = new Set();
+  const descriptions = new Set();
+  for (const page of allHtml(out)) {
+    const html = fs.readFileSync(path.join(out, page), 'utf8');
+    const title = html.match(/<title>(.*)<\/title>/)[1];
+    const desc = html.match(/<meta name="description" content="([^"]*)"/)[1];
+    assert.ok(!titles.has(title), `duplicate title: ${title}`);
+    assert.ok(!descriptions.has(desc), `duplicate description on ${page}`);
+    titles.add(title);
+    descriptions.add(desc);
+    assert.match(html, /href="#main"/);
+    assert.doesNotMatch(html, /<script/);
+    assert.doesNotMatch(html, /\u2014/, `${page} contains an em dash`);
+    if (page !== '404.html') assert.match(html, /<link rel="canonical" href="https:\/\/troop45-thegoats\.github\.io\/troop-45\//);
+  }
+});
+
+test('the home page shows the next event and an empty past page says so', () => {
+  const root = path.join(__dirname, '..');
+  const real = JSON.parse(fs.readFileSync(path.join(root, 'site.config.json'), 'utf8'));
+  const out = fs.mkdtempSync(path.join(os.tmpdir(), 'troop45-'));
+  writeSite(buildSchedule([], real, new Date('2026-10-11T12:00:00Z')), real, out, path.join(root, 'src/static'));
+  assert.match(fs.readFileSync(path.join(out, 'index.html'), 'utf8'), /Nothing scheduled yet\./);
+  assert.match(fs.readFileSync(path.join(out, 'past.html'), 'utf8'), /No past events yet\./);
+
+  const { out: full } = buildSampleSite();
+  const home = fs.readFileSync(path.join(full, 'index.html'), 'utf8');
+  assert.match(home, /class="next-title"><a href="events\/2026-10-13-plc-meeting\.html">PLC Meeting/);
 });

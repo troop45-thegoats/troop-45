@@ -7,5 +7,7 @@
   "timeZone": "America/New_York",
   "baseUrl": "https://troop45-thegoats.github.io/troop-45/",
   "patrols": ["Patrol A", "Patrol B", "Patrol C"],
+  "accessibilityEmail": "",
+  "accessibilityReplyTime": "",
   "allowedContacts": []
 }
