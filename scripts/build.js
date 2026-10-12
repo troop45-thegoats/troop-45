@@ -669,6 +669,11 @@ function main() {
   if (errors.length) {
     console.error(`Build stopped. Nothing was published. Fix ${errors.length === 1 ? 'this' : 'these'} (notes are in ${dirName}/):\n`);
     for (const e of errors) console.error(`  ${e}`);
+    // On GitHub, "::error" lines show on the run's summary page, so an admin
+    // on a phone sees the problem without opening the full log.
+    if (process.env.GITHUB_ACTIONS) {
+      for (const e of errors) console.log(`::error title=Build stopped, site not updated::${e}`);
+    }
     process.exit(1);
   }
   writeSite(schedule, config, path.join(ROOT, 'dist'), path.join(ROOT, 'src/static'));
