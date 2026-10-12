@@ -672,7 +672,7 @@ function main() {
     // On GitHub, "::error" lines show on the run's summary page, so an admin
     // on a phone sees the problem without opening the full log.
     if (process.env.GITHUB_ACTIONS) {
-      for (const e of errors) console.log(`::error title=Build stopped, site not updated::${e}`);
+      for (const e of errors) console.log(`::error title=Site not updated::${e}`);
     }
     process.exit(1);
   }
