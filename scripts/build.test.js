@@ -6,7 +6,7 @@ const os = require('node:os');
 const {
   isRealDate, todayIn, daysBetween, parseTasks, findContacts,
   parseNote, buildSchedule, NoteError,
-  esc, timeRange, whenText, renderNotes, writeSite, checkConfig,
+  esc, timeRange, whenText, renderNotes, writeSite, checkConfig, checkUploads,
 } = require('./build.js');
 
 const config = {
@@ -141,10 +141,13 @@ test('end_date before date', () => {
   rejects(FILE, note([...BASE, 'end_date: 2026-10-12']), /end_date 2026-10-12 is before date 2026-10-13/);
 });
 
-test('unquoted or malformed times', () => {
-  rejects(FILE, note([...BASE, 'start: 19:00']), /start must be a quoted 24-hour time/);
-  rejects(FILE, note([...BASE, 'end: "7:30pm"']), /end must be a quoted 24-hour time/);
-  rejects(FILE, note([...BASE, 'start: "24:00"']), /start must be a quoted/);
+test('times are read as typed, quoted or not, and must be 24-hour', () => {
+  // YAML alone would turn an unquoted 19:00 into the number 1140.
+  assert.equal(parseNote(FILE, note([...BASE, 'start: 19:00', "end: '20:30'"]), config).start, '19:00');
+  assert.equal(parseNote(FILE, note([...BASE, 'start: 19:00', 'end: "20:30"']), config).end, '20:30');
+  rejects(FILE, note([...BASE, 'end: "7:30pm"']), /end must be a 24-hour time like 19:00/);
+  rejects(FILE, note([...BASE, 'start: "24:00"']), /start must be a 24-hour time/);
+  rejects(FILE, note([...BASE, 'start: 7']), /start must be a 24-hour time/);
 });
 
 test('file name must match the date and the naming pattern', () => {
@@ -169,10 +172,10 @@ test('privacy guard blocks emails and phone numbers unless allowed', () => {
 test('buildSchedule reports every broken note with its file name', () => {
   const result = buildSchedule([
     { fileName: FILE, source: note(BASE) },
-    { fileName: '2026-10-14-bad.md', source: note(['title: X', 'type: meeting', 'date: 2026-10-14', 'start: 19:00']) },
+    { fileName: '2026-10-14-bad.md', source: note(['title: X', 'type: meeting', 'date: 2026-10-14', 'start: 7pm']) },
   ], config, new Date('2026-10-01T12:00:00Z'));
   assert.equal(result.errors.length, 1);
-  assert.match(result.errors[0], /^2026-10-14-bad\.md: start must be a quoted/);
+  assert.match(result.errors[0], /^2026-10-14-bad\.md: start must be a 24-hour time/);
 });
 
 // ---------- upcoming versus past ----------
@@ -239,6 +242,50 @@ test('to do list: open tasks from upcoming, live events, by due date, undated la
   assert.equal(s.todo[0].eventSlug, '2026-10-15-a');
 });
 
+// ---------- notes saved by the editing form ----------
+
+test('form-made notes: tasks in the header, empty optional fields', () => {
+  const ev = parseNote('2026-10-17-fall-campout.md', note([
+    'title: Fall Campout', 'type: campout', 'date: 2026-10-17', 'end_date: ""',
+    'start: 08:00', 'end: ""', 'location: ""', 'status: ""',
+    'tasks:',
+    '  - text: Return permission slip',
+    '    patrol: ""',
+    '    due: 2026-10-08',
+    '    done: false',
+    '  - text: Plan dinner',
+    '    patrol: Patrol A',
+    '    due: ""',
+    '    done: true',
+  ], 'Bring a sleeping bag.\n'), config);
+  assert.equal(ev.endDate, null);
+  assert.equal(ev.end, null);
+  assert.equal(ev.location, null);
+  assert.equal(ev.status, 'scheduled');
+  assert.deepEqual(ev.tasks, [
+    { text: 'Return permission slip', patrol: null, due: '2026-10-08', done: false },
+    { text: 'Plan dinner', patrol: 'Patrol A', due: null, done: true },
+  ]);
+});
+
+test('header tasks and body tasks are combined', () => {
+  const ev = parseNote(FILE, note([...BASE, 'tasks:', '  - text: From the form'], '## Tasks\n- [ ] Typed by hand\n'), config);
+  assert.deepEqual(ev.tasks.map((t) => t.text), ['From the form', 'Typed by hand']);
+});
+
+test('header task errors', () => {
+  rejects(FILE, note([...BASE, 'tasks:', '  - text: ""']), /task 1 in the header has no text/);
+  rejects(FILE, note([...BASE, 'tasks:', '  - text: Menu', '    patrol: Patrol Z']), /task 1 \("Menu"\): unknown patrol "Patrol Z"/);
+  rejects(FILE, note([...BASE, 'tasks:', '  - text: Menu', '    due: "2026-02-30"']), /due date "2026-02-30" is not a real date/);
+  rejects(FILE, note([...BASE, 'tasks: buy food']), /"tasks" in the header must be a list/);
+});
+
+test('form-style file names with double hyphens are accepted', () => {
+  assert.doesNotThrow(() => parseNote('2026-10-13-scouts--day.md', note(BASE), config));
+  rejects('2026-10-13-.md', note(BASE), /must look like/);
+  rejects('2026-10-13-trailing-.md', note(BASE), /must look like/);
+});
+
 // ---------- pages ----------
 
 test('esc neutralizes HTML in note text', () => {
@@ -282,7 +329,8 @@ function buildSampleSite() {
 function allHtml(dir, base = dir) {
   return fs.readdirSync(dir, { withFileTypes: true }).flatMap((d) => {
     const p = path.join(dir, d.name);
-    if (d.isDirectory()) return allHtml(p, base);
+    // admin/ is the editors' tool, not a public page, and is tested separately.
+    if (d.isDirectory()) return d.name === 'admin' ? [] : allHtml(p, base);
     return d.name.endsWith('.html') ? [path.relative(base, p)] : [];
   });
 }
@@ -338,4 +386,33 @@ test('the home page shows the next event and an empty past page says so', () => 
   const { out: full } = buildSampleSite();
   const home = fs.readFileSync(path.join(full, 'index.html'), 'utf8');
   assert.match(home, /class="next-title"><a href="events\/2026-10-13-plc-meeting\.html">PLC Meeting/);
+});
+
+test('the editing form is generated from site.config.json', () => {
+  const { out } = buildSampleSite();
+  const real = JSON.parse(fs.readFileSync(path.join(__dirname, '../site.config.json'), 'utf8'));
+  const html = fs.readFileSync(path.join(out, 'admin/index.html'), 'utf8');
+  assert.match(html, /<meta name="robots" content="noindex">/);
+  // Pinned to an exact version, never "latest".
+  assert.match(html, /unpkg\.com\/@sveltia\/cms@\d+\.\d+\.\d+\/dist\/sveltia-cms\.js/);
+
+  const cms = JSON.parse(fs.readFileSync(path.join(out, 'admin/config.yml'), 'utf8'));
+  assert.equal(cms.backend.repo, real.repo);
+  const events = cms.collections[0];
+  assert.equal(events.folder, 'content/meetings');
+  assert.equal(events.slug, '{{date}}-{{title}}');
+  const tasks = events.fields.find((f) => f.name === 'tasks');
+  assert.deepEqual(tasks.fields.find((f) => f.name === 'patrol').options, real.patrols);
+  const types = events.fields.find((f) => f.name === 'type').options.map((o) => o.value);
+  assert.deepEqual(types, ['meeting', 'campout', 'camp', 'plc', 'court-of-honor', 'service', 'other']);
+  // The admin page is never listed for search engines.
+  assert.doesNotMatch(fs.readFileSync(path.join(out, 'sitemap.xml'), 'utf8'), /admin/);
+});
+
+test('any uploaded file stops the build', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'uploads-'));
+  assert.deepEqual(checkUploads(dir), []);
+  assert.deepEqual(checkUploads(path.join(dir, 'missing')), []);
+  fs.writeFileSync(path.join(dir, 'photo.jpg'), '');
+  assert.match(checkUploads(dir)[0], /never publishes uploaded files \(photo\.jpg\)/);
 });

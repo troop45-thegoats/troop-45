@@ -27,7 +27,7 @@ The job right now is to build it and ship it. Learning is deferred. Once it is l
 5. Pages are generated as plain HTML at build time. They must read correctly without JavaScript.
 6. Design for a ~375px-wide phone first, then widen.
 7. Accessibility basics: semantic HTML, readable color contrast, never convey meaning by color alone.
-8. Past meetings are not editable through the site. There is no admin UI in v1. Git history is the record of what changed.
+8. The site itself has no admin UI. The one exception is the Phase 6 editing form at `/admin` (decided), which only commits notes to GitHub under each admin's own account, exactly like an edit on GitHub's website. Git history is the record of what changed.
 
 ## Conventions
 
@@ -76,8 +76,8 @@ title: Fall Campout
 type: campout          # meeting | campout | camp | plc | court-of-honor | service | other
 date: 2026-10-18
 end_date: 2026-10-19   # optional, multi-day events
-start: "19:00"         # optional, 24h local time, quoted
-end: "20:30"           # optional, quoted
+start: "19:00"         # optional, 24h local time; quotes optional
+end: "20:30"           # optional
 location: Venue name
 status: scheduled      # optional; scheduled | cancelled. Default: scheduled
 ---
@@ -104,7 +104,7 @@ Short public-safe note (what to bring, where to meet). No names.
 
 - Required: `title`, `type`, `date`. Type and status must be from the allowed lists.
 - `date` and `end_date` are real calendar dates, and `end_date` is not before `date`.
-- `start` and `end` are quoted `HH:MM` strings. An unquoted time can be read as a number.
+- `start` and `end` are 24-hour `HH:MM` times, read from the text as typed (quotes optional), because YAML reads an unquoted 19:00 as the number 1140. Changed from "must be quoted" for the Phase 6 form, whose pinned version writes times unquoted.
 - The filename starts with the same date as the `date` field.
 - Task lines parse, and patrol tags are known.
 - Privacy guard: fail if any note contains something that looks like an email address or phone number, unless it is listed in `site.config.json` under `allowedContacts`. The troop's accessibility email address goes there once the Scoutmaster approves it.
@@ -156,11 +156,11 @@ Jobs: `build` (install, test, build, upload `dist/`), then `deploy` (needs `buil
 
 ## How edits are handled (admins)
 
-Admins are the people added as collaborators on the GitHub repo. There is no shared password and no admin screen on the site. Each admin uses their own GitHub account with two-factor login on. Admins edit notes on GitHub's website (nothing to install, works on a phone) or in any text editor.
+Admins are the people added as collaborators on the GitHub repo. There is no shared password. The editing form at `/admin` (Phase 6) signs in with each admin's own GitHub token. Each admin uses their own GitHub account with two-factor login on. Admins edit notes on GitHub's website (nothing to install, works on a phone) or in any text editor.
 
 **The path of an edit**
 1. An admin edits or creates one note in `content/meetings/` and commits it with a plain message like "Move Oct 14 meeting to the 15th".
-2. GitHub runs the tests and the validation. A bad date, an unknown type, or an unquoted time is rejected with a plain message.
+2. GitHub runs the tests and the validation. A bad date, an unknown type, or a malformed time is rejected with a plain message.
 3. If the check passes, the site rebuilds and deploys, usually within minutes. If it fails, the old site stays live and the admin sees the error in the repo's Actions tab.
 4. The change is recorded permanently: who, when, and exactly what changed.
 
@@ -268,12 +268,19 @@ Deliberately skipped for v1, with reasons:
 - [ ] Event structured data (JSON-LD)
 - [ ] Past-meeting guard: a workflow step fails when a commit changes the note of a past meeting unless the commit message contains "[correction]", so silent rewrites of the record become visible
 
-### Phase 6: Admin form (optional, only after the site is live and I decide)
-A browser form for adding events, for admins who are not comfortable with GitHub. A git-based CMS form (Decap or Sveltia CMS) at `/admin` saves the same Markdown notes. Check each project's current sign-in options first: any option that needs a small server conflicts with hard rule 3. Notes would need tasks as a structured list in the header, so the build would accept both formats.
+### Phase 6: Admin form (decided 2026-10-14: build it)
+A browser form for adding events, for admins who are not comfortable with GitHub.
+- [x] Checked sign-in options. Decap's GitHub sign-in needs an OAuth server (conflicts with rule 3). Sveltia CMS supports "Sign In Using Access Token" with a fine-grained token (Contents: read and write on this repo only), with no server. Chosen: Sveltia CMS, pinned to an exact release at least two weeks old (`CMS_VERSION` in `build.js`).
+- [x] The build generates `dist/admin/index.html` and `dist/admin/config.yml` from `site.config.json` (repo, patrols, types), so nothing is written down twice.
+- [x] The build accepts tasks both as `## Tasks` lines in the body and as a `tasks:` list in the header (what the form writes), and treats empty optional fields as absent.
+- [x] File names come from the event's own date (`{{date}}-{{title}}`). Moving an event's date needs a rename in the form's Slug panel; the build's error message says so.
+- [x] Sveltia requires an upload folder: `content/uploads`, never published, and the build fails if anything is in it (rule 1: no photos).
+- [ ] First real sign-in and save from the live form, by an admin with their own token
+- [ ] Decide: load the CMS script from unpkg.com (current) or self-host the pinned file in `src/static/admin/` so the admin page also makes no third-party requests
 
 ## Out of scope for v1
 
-Logins or an admin panel, attendance, RSVPs, scout names or photos, tasks assigned to individual scouts (tasks are for Everyone or a patrol), per-patrol pages, comments, tracking of individuals. Role and tenure tracking needs scout names, so it would need a separate private system, not this public site.
+Logins on the public site or an admin panel beyond the Phase 6 editing form, attendance, RSVPs, scout names or photos, tasks assigned to individual scouts (tasks are for Everyone or a patrol), per-patrol pages, comments, tracking of individuals. Role and tenure tracking needs scout names, so it would need a separate private system, not this public site.
 
 ## Decided
 

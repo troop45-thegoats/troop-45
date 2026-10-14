@@ -3,6 +3,7 @@
 This is for whoever keeps the schedule up to date. You don't need to install anything, and it works on a phone.
 
 - **Live site:** https://troop45-thegoats.github.io/troop-45/
+- **Editing form:** https://troop45-thegoats.github.io/troop-45/admin/
 - **Where events live:** https://github.com/troop45-thegoats/troop-45/tree/main/content/meetings
 - **What happened to recent edits:** https://github.com/troop45-thegoats/troop-45/actions
 
@@ -27,7 +28,51 @@ Every admin uses their own GitHub account with two-factor login turned on. There
 
 The site checks rule 1 for you: anything that looks like an email address or phone number stops the update.
 
-## Add an event
+## Two ways to edit
+
+- **The editing form** (easiest): a form at `/troop-45/admin/` with a box for each detail. It saves the same files described below.
+- **GitHub's website**: edit the text files directly. Use this if the form is down, or for anything the form can't do.
+
+Both need your own GitHub account with access to the repo, and both go through the same checks before anything is published.
+
+## Using the editing form
+
+### One-time setup: make your access token
+
+The form signs in with a personal access token: a long password-like code that lets it save to this one repo for you. There is no server in between, so the token is how it proves who you are.
+
+1. Open the form: https://troop45-thegoats.github.io/troop-45/admin/
+2. Tap **Sign In Using Access Token**. (Not "Sign In with GitHub": that option needs a server this site doesn't have.)
+3. Follow the link on that screen to GitHub. On GitHub's token page:
+   - **Token name:** `troop-45 editing form`
+   - **Expiration:** up to one year. Put a reminder in your calendar to make a new one.
+   - **Resource owner:** `troop45-thegoats`
+   - **Repository access:** Only select repositories, then `troop-45`
+   - **Permissions:** Repository permissions, **Contents: Read and write**. Nothing else is needed.
+4. Tap **Generate token**, copy it, and paste it into the form.
+
+If GitHub says the token needs approval, an organization owner approves it under the organization's **Settings, Personal access tokens, Pending requests**.
+
+**Keep the token secret.** Never paste it into a message or a note. It is saved only in that browser. If you lose the phone or computer, delete the token on GitHub (**Settings, Developer settings, Personal access tokens, Fine-grained tokens**) and make a new one.
+
+### Add an event
+
+1. Open the form and tap **Events**, then **New Event**.
+2. Fill in the boxes. Title, Type, and Date are required; leave anything else empty if it doesn't apply.
+3. Add tasks under **To do**: the task, a patrol (leave it empty for everyone), an optional due date.
+4. Tap **Save**. The site updates in about two minutes, the same as an edit on GitHub (see "If something goes wrong").
+
+### Change, cancel, or finish an event in the form
+
+- **Moved to another day:** change **Date**, then also change the start of the name in the **Slug** panel to the new date, so the file name matches. If you forget, the update stops with a message saying so, and the live site stays as it was.
+- **Called off:** set **Status** to Cancelled. Never delete a past event.
+- **Task done:** tick **Done** on that task.
+
+**Never upload files or photos.** The form has a file library, but this site doesn't use it. Anything uploaded stops the update, and because the repo's history is public, tell the maintainer straight away if a photo was uploaded by mistake.
+
+## Editing on GitHub's website
+
+### Add an event
 
 1. Open the events folder: https://github.com/troop45-thegoats/troop-45/tree/main/content/meetings
 2. Tap **Add file**, then **Create new file**.
@@ -65,7 +110,7 @@ The same template, with a note on every line, is in `content/templates/meeting.m
 | `type` | One of: `meeting`, `campout`, `camp`, `plc`, `court-of-honor`, `service`, `other` |
 | `date` | First day, as `YYYY-MM-DD`. Must match the start of the file name. |
 | `end_date` | Only for events longer than one day. Last day, as `YYYY-MM-DD`. Delete the line otherwise. |
-| `start`, `end` | 24-hour time **inside quotes**: `"19:00"`, not `19:00` or `7pm`. Both are optional. |
+| `start`, `end` | 24-hour time: `19:00`, not `7pm`. Quotes are optional. Both are optional. |
 | `location` | Where it happens. Optional. |
 | `status` | Leave it out normally. Add `status: cancelled` if the event is called off. |
 
@@ -82,7 +127,7 @@ Tasks go under the `## Tasks` heading, one per line:
 
 Leave out the `## Tasks` heading entirely if there are no tasks.
 
-## Change, cancel, or finish an event
+### Change, cancel, or finish an event
 
 1. Open the event's file in the events folder.
 2. Tap the **pencil** icon (Edit).
@@ -100,9 +145,9 @@ If your change breaks a rule, **the live site is not touched**: it keeps showing
 
 | The message says | What to do |
 |---|---|
-| `start must be a quoted 24-hour time like "19:00"` | Put the time in quotes and use 24-hour time: `start: "19:00"`. Same for `end`. |
+| `start must be a 24-hour time like 19:00` | Use 24-hour time with a colon: `start: 19:00`, not `7pm` or `7`. Same for `end`. |
 | `date "..." is not a real date` | Use `YYYY-MM-DD` and a day that exists (no February 30). |
-| `file name starts with ... but the date field is ...` | Rename the file so it starts with the same date as the `date` line. |
+| `file name starts with ... but the date field is ...` | Rename the file so it starts with the same date as the `date` line. In the form, change it in the Slug panel. |
 | `file name must look like YYYY-MM-DD-short-name.md` | Lowercase letters, numbers and hyphens only, ending in `.md`. |
 | `is missing "title"` (or `"type"`, `"date"`) | Add the missing line between the `---` lines. |
 | `type "..." is not allowed` | Use one of the types in the table above, spelled exactly. |
@@ -112,6 +157,8 @@ If your change breaks a rule, **the live site is not touched**: it keeps showing
 | `unknown patrol "[...]"` | Match the patrol name in `site.config.json` exactly, or leave the tag off for everyone. |
 | `line N under "## Tasks" is not a task` | Every line under `## Tasks` must start with `- [ ] ` (dash, space, brackets with a space, space). |
 | `write the due date at the end of the line` | Move `(due YYYY-MM-DD)` to the end of the task. |
+| `task N in the header has no text` (or `unknown patrol`, `due date`) | A task made in the form is missing its text, or has a patrol or date that isn't allowed. Open the event in the form and fix that task. |
+| `this site never publishes uploaded files` | Something was uploaded through the form's file library. Delete it from `content/uploads`, and tell the maintainer if it was a photo. |
 | `contains what looks like contact info` | Remove the email address or phone number. If the Scoutmaster approved it, the maintainer adds it to `allowedContacts`. |
 | `the header between the --- lines can't be read` | Usually a missing `---` line or a missing colon. Compare with the template. |
 

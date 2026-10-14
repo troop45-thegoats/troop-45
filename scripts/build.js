@@ -10,7 +10,7 @@ const ROOT = path.join(__dirname, '..');
 
 const TYPES = ['meeting', 'campout', 'camp', 'plc', 'court-of-honor', 'service', 'other'];
 const STATUSES = ['scheduled', 'cancelled'];
-const FIELDS = ['title', 'type', 'date', 'end_date', 'start', 'end', 'location', 'status'];
+const FIELDS = ['title', 'type', 'date', 'end_date', 'start', 'end', 'location', 'status', 'tasks'];
 
 // One error type so the CLI can print a plain message instead of a stack trace.
 class NoteError extends Error {}
@@ -55,12 +55,18 @@ function daysBetween(a, b) {
 // ---------- front matter ----------
 
 // YAML rewrites some values before we see them: 2026-02-30 silently becomes
-// March 2, and an unquoted 19:00 becomes the number 1140. So dates are checked
-// against the text as typed, and times must arrive as strings.
+// March 2, and an unquoted 19:00 becomes the number 1140. So dates and times
+// are read from the text as typed, with or without quotes.
 function rawValue(header, key) {
   const m = header.match(new RegExp(`^${key}:[ \\t]*(.*)$`, 'm'));
   if (!m) return undefined;
   return m[1].replace(/\s+#.*$/, '').trim().replace(/^(["'])(.*)\1$/, '$2');
+}
+
+// The editing form can save an optional field as an empty value instead of
+// leaving it out, so empty counts as absent.
+function isBlank(v) {
+  return v === undefined || v === null || (typeof v === 'string' && v.trim() === '');
 }
 
 // ---------- tasks ----------
@@ -103,6 +109,38 @@ function parseTasks(lines, patrols) {
     tasks.push({ text: rest, patrol, due, done: m[1] !== ' ' });
   });
   return tasks;
+}
+
+// Tasks saved by the editing form live in the header as a list:
+//   tasks:
+//     - text: Plan the menu
+//       patrol: Patrol A
+//       due: 2026-10-12
+//       done: false
+function parseHeaderTasks(list, patrols) {
+  if (isBlank(list)) return [];
+  if (!Array.isArray(list)) throw new NoteError('"tasks" in the header must be a list.');
+  return list.map((item, i) => {
+    const n = i + 1;
+    if (!item || typeof item !== 'object') throw new NoteError(`task ${n} in the header is not filled in.`);
+    const text = isBlank(item.text) ? '' : String(item.text).trim();
+    if (!text) throw new NoteError(`task ${n} in the header has no text.`);
+    let patrol = null;
+    if (!isBlank(item.patrol)) {
+      patrol = String(item.patrol).trim();
+      if (!patrols.includes(patrol)) {
+        throw new NoteError(`task ${n} ("${text}"): unknown patrol "${patrol}". Known patrols: ${patrols.join(', ') || 'none'}.`);
+      }
+    }
+    let due = null;
+    if (!isBlank(item.due)) {
+      // An unquoted date inside a list arrives as a Date at UTC midnight, so
+      // its UTC parts are the date as written.
+      due = item.due instanceof Date ? item.due.toISOString().slice(0, 10) : String(item.due).trim();
+      if (!isRealDate(due)) throw new NoteError(`task ${n} ("${text}"): due date "${due}" is not a real date. Use YYYY-MM-DD.`);
+    }
+    return { text, patrol, due, done: item.done === true };
+  });
 }
 
 // Splits the body into the public note and the lines under "## Tasks".
@@ -167,14 +205,14 @@ function parseNote(fileName, source, config) {
   const type = String(data.type).trim();
   if (!TYPES.includes(type)) throw new NoteError(`type "${type}" is not allowed. Use one of: ${TYPES.join(', ')}.`);
 
-  const status = data.status === undefined ? 'scheduled' : String(data.status).trim();
+  const status = isBlank(data.status) ? 'scheduled' : String(data.status).trim();
   if (!STATUSES.includes(status)) throw new NoteError(`status "${status}" is not allowed. Use scheduled or cancelled.`);
 
   const date = rawValue(header, 'date');
   if (!isRealDate(date)) throw new NoteError(`date "${date}" is not a real date. Use YYYY-MM-DD.`);
 
   let endDate = null;
-  if (data.end_date !== undefined) {
+  if (!isBlank(data.end_date)) {
     endDate = rawValue(header, 'end_date');
     if (!isRealDate(endDate)) throw new NoteError(`end_date "${endDate}" is not a real date. Use YYYY-MM-DD.`);
     if (endDate < date) throw new NoteError(`end_date ${endDate} is before date ${date}.`);
@@ -182,24 +220,31 @@ function parseNote(fileName, source, config) {
 
   const times = {};
   for (const key of ['start', 'end']) {
-    if (data[key] === undefined) { times[key] = null; continue; }
-    if (!isTime(data[key])) {
-      throw new NoteError(`${key} must be a quoted 24-hour time like "19:00" (got ${rawValue(header, key)}).`);
+    if (isBlank(data[key])) { times[key] = null; continue; }
+    const typed = rawValue(header, key);
+    if (!isTime(typed)) {
+      throw new NoteError(`${key} must be a 24-hour time like 19:00 (got ${typed}).`);
     }
-    times[key] = data[key];
+    times[key] = typed;
   }
 
-  if (!/^\d{4}-\d{2}-\d{2}-[a-z0-9]+(-[a-z0-9]+)*\.md$/.test(fileName)) {
+  // Double hyphens are allowed because the form turns "Scouts' Day" into "scouts-day" or "scouts--day".
+  if (!/^\d{4}-\d{2}-\d{2}-[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.md$/.test(fileName)) {
     throw new NoteError('file name must look like YYYY-MM-DD-short-name.md (lowercase, hyphens).');
   }
   if (!fileName.startsWith(date)) {
-    throw new NoteError(`file name starts with ${fileName.slice(0, 10)} but the date field is ${date}. Make them match.`);
+    throw new NoteError(`file name starts with ${fileName.slice(0, 10)} but the date field is ${date}. Rename the file to start with ${date} (in the editing form, change it in the Slug panel).`);
   }
 
   // Header lines plus the two --- lines come before the body.
   const firstBodyLine = header.replace(/^\n/, '').split('\n').length + 3;
   const { notes, taskLines } = splitBody(file.content, firstBodyLine);
-  const tasks = parseTasks(taskLines, config.patrols || []);
+  // Hand-written notes list tasks in the body, form-made notes in the header.
+  // Both are accepted, and a note may have both.
+  const tasks = [
+    ...parseHeaderTasks(data.tasks, config.patrols || []),
+    ...parseTasks(taskLines, config.patrols || []),
+  ];
 
   return {
     slug: fileName.replace(/\.md$/, ''),
@@ -210,7 +255,7 @@ function parseNote(fileName, source, config) {
     endDate,
     start: times.start,
     end: times.end,
-    location: data.location === undefined ? null : String(data.location).trim(),
+    location: isBlank(data.location) ? null : String(data.location).trim(),
     status,
     notes,
     tasks,
@@ -620,6 +665,100 @@ ${paths.map((p) => `  <url><loc>${esc(site.config.baseUrl + p)}</loc></url>`).jo
 `;
 }
 
+// ---------- editing form (/admin) ----------
+
+// Sveltia CMS: a browser-only editor that saves the same Markdown notes to
+// GitHub. Admins sign in with their own GitHub token, so there is no server.
+// Pinned to a release at least two weeks old; upgrade on purpose, not by accident.
+const CMS_VERSION = '0.224.0';
+
+function adminPage() {
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Edit the schedule | Troop 45</title>
+</head>
+<body>
+<noscript>The editing form needs JavaScript. You can also edit events directly on GitHub; see ADMIN.md.</noscript>
+<script src="https://unpkg.com/@sveltia/cms@${CMS_VERSION}/dist/sveltia-cms.js"></script>
+</body>
+</html>
+`;
+}
+
+// Built from site.config.json so the patrol list and repo live in one place.
+// JSON is valid YAML, so it is written as config.yml, the name Sveltia looks for.
+function adminConfig(config) {
+  const dateField = (name, label, required, hint) => ({
+    name, label, widget: 'datetime', time_format: false, format: 'YYYY-MM-DD', required, ...(hint && { hint }),
+  });
+  const timeField = (name, label) => ({
+    name, label, widget: 'datetime', date_format: false, format: 'HH:mm', required: false,
+    hint: '24-hour time, e.g. 19:00. Optional.',
+  });
+  return {
+    backend: { name: 'github', repo: config.repo, branch: 'main' },
+    // Sveltia insists on an upload folder even with no image fields. This one
+    // is never published, and checkUploads() fails the build if anything lands
+    // in it: the repo is public, and photos of scouts are never allowed.
+    media_folder: 'content/uploads',
+    site_url: config.baseUrl,
+    publish_mode: 'simple',
+    // The validation rules want lowercase ASCII file names.
+    slug: { encoding: 'ascii', clean_accents: true },
+    collections: [{
+      name: 'meetings',
+      label: 'Events',
+      label_singular: 'Event',
+      folder: 'content/meetings',
+      extension: 'md',
+      format: 'frontmatter',
+      create: true,
+      // File names must start with the event's own date, not the day it was typed.
+      slug: '{{date}}-{{title}}',
+      summary: '{{date}}: {{title}}',
+      sortable_fields: ['date', 'title'],
+      fields: [
+        { name: 'title', label: 'Title', widget: 'string' },
+        {
+          name: 'type', label: 'Type', widget: 'select', default: 'meeting',
+          options: Object.entries(TYPE_LABELS).map(([value, label]) => ({ value, label })),
+        },
+        dateField('date', 'Date', true, 'First day. Moving an event to another day? Also rename it in the Slug panel.'),
+        dateField('end_date', 'End date', false, 'Only for events longer than one day.'),
+        timeField('start', 'Start time'),
+        timeField('end', 'End time'),
+        { name: 'location', label: 'Location', widget: 'string', required: false },
+        {
+          name: 'status', label: 'Status', widget: 'select', required: false, default: 'scheduled',
+          options: [{ value: 'scheduled', label: 'Scheduled' }, { value: 'cancelled', label: 'Cancelled' }],
+          hint: 'Never delete a past event. Mark it Cancelled instead.',
+        },
+        {
+          name: 'tasks', label: 'To do', label_singular: 'task', widget: 'list', required: false,
+          summary: '{{fields.text}}',
+          fields: [
+            { name: 'text', label: 'Task', widget: 'string' },
+            {
+              name: 'patrol', label: 'Patrol', widget: 'select', required: false,
+              options: config.patrols || [], hint: 'Leave empty for everyone. Never a person.',
+            },
+            dateField('due', 'Due date', false),
+            { name: 'done', label: 'Done', widget: 'boolean', required: false, default: false },
+          ],
+        },
+        {
+          name: 'body', label: 'Public note', widget: 'text', required: false,
+          hint: 'What to bring, where to meet, pickup time. No names, phone numbers, or emails.',
+        },
+      ],
+    }],
+  };
+}
+
 // Starts from an empty dist/ every time, so a deleted note never leaves an
 // orphaned page behind.
 function writeSite(schedule, config, outDir, staticDir) {
@@ -637,6 +776,9 @@ function writeSite(schedule, config, outDir, staticDir) {
   write('about.html', aboutPage(site));
   write('404.html', notFoundPage(site));
   write('sitemap.xml', sitemap(site));
+  fs.mkdirSync(path.join(outDir, 'admin'));
+  write('admin/index.html', adminPage());
+  write('admin/config.yml', JSON.stringify(adminConfig(config), null, 2) + '\n');
   for (const ev of [...schedule.upcoming, ...schedule.past]) write(`events/${ev.slug}.html`, eventPage(site, ev));
 }
 
@@ -649,6 +791,16 @@ function checkConfig(config) {
     errors.push('site.config.json: accessibilityEmail must also be listed in allowedContacts once the Scoutmaster approves it.');
   }
   return errors;
+}
+
+// Rule 1: no photos. Nothing on the site takes uploads, so any file here
+// came through the editing form's file library by mistake.
+function checkUploads(dir) {
+  if (!fs.existsSync(dir)) return [];
+  const files = fs.readdirSync(dir).filter((f) => !f.startsWith('.'));
+  return files.length
+    ? [`content/uploads: this site never publishes uploaded files (${files.join(', ')}). Delete them, and tell the maintainer if it was a photo, because the repo's history is public.`]
+    : [];
 }
 
 function readNotes(dir) {
@@ -664,7 +816,7 @@ function main() {
   const dirName = useSamples ? 'content/samples' : 'content/meetings';
   const config = JSON.parse(fs.readFileSync(path.join(ROOT, 'site.config.json'), 'utf8'));
   const schedule = buildSchedule(readNotes(path.join(ROOT, dirName)), config);
-  const errors = [...checkConfig(config), ...schedule.errors];
+  const errors = [...checkConfig(config), ...checkUploads(path.join(ROOT, 'content/uploads')), ...schedule.errors];
 
   if (errors.length) {
     console.error(`Build stopped. Nothing was published. Fix ${errors.length === 1 ? 'this' : 'these'} (notes are in ${dirName}/):\n`);
@@ -685,5 +837,5 @@ if (require.main === module) main();
 module.exports = {
   isRealDate, isTime, todayIn, daysBetween, rawValue, parseTasks, findContacts,
   parseNote, classify, buildTodo, buildSchedule, NoteError,
-  esc, time12, timeRange, whenText, relativeDay, renderNotes, writeSite, checkConfig,
+  esc, time12, timeRange, whenText, relativeDay, renderNotes, writeSite, checkConfig, checkUploads,
 };
